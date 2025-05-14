@@ -108,11 +108,10 @@ def cmd_who(sender_soc, server: SocketAddress, channel: str):
     return
 
 
-def cmd_switch(channel: str):
+def cmd_switch(activeChannel: str):
+    # LOCAL (confirmed, no need server communication)
+    #placeholder for completeness 
     return
-    # LOCAL
-    # : Switch to an existing named channel that user has already joined.
-#endregion
 
 def main():
     if (len(sys.argv) != 4):
@@ -162,7 +161,7 @@ def main():
 
             case ["/switch", channel]:
                 print(f"executing cmd_switch({channel})")
-                #cmd_switch(server)
+                active_channel = channel
 
             case ["/"]:
                 print(f"Unknown command: {parsed_input}")
