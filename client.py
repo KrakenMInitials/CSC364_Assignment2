@@ -1,4 +1,4 @@
-import sys, time, struct, threading
+import sys, time, threading
 from globals import *
 from protocols import *
 import re
@@ -13,13 +13,40 @@ def create_client_socket(server: SocketAddress):
         sys.exit()
 
 
-def clientListener(client_soc: socket.socket):     #will create a socket to listen to and handle connections
+def clientListener(client_soc: socket.socket):     #listenerThread
     while (True):
-        raw_message = client_soc.recvfrom(1024)
-        channel, user, text = parse_say_response(raw_message)
-        print(f"[{channel}][{user}] {text}")
+        recieved_datagram = client_soc.recvfrom(1024)
+
+        #Response can be
+        #say response
+        #list response
+        #who response
+        #error_response
+        
+        msg_type = get_message_type(recieved_datagram)
+        if ( msg_type == 0): #say 
+            channel, user, text = parse_say_response(recieved_datagram)
+            print(f"[{channel}][{user}] {text}")
+
+        elif (msg_type == 1): #list 
+            channels_arr = parse_list_response(recieved_datagram)
+            print("Existing channels: ")
+            for x in channels_arr:
+                print(x)
+        
+        elif (msg_type == 2): #who
+            users_arr = parse_who_response(recieved_datagram)
+            print(f"Users on channel {channel}:")
+            for x in users_arr:
+                print(x)
+
+        elif ( msg_type == 3): #error
+            error_msg = parse_error_response(recieved_datagram)
+            raise ValueError(f"Error message from server: \n\t{error_msg}")
+
 
 #region Command functions
+    # say <message>
     # /exit
     # /join <channel>
     # /leave <channel>
@@ -27,14 +54,20 @@ def clientListener(client_soc: socket.socket):     #will create a socket to list
     # /who <channel>: List the users who are on the named channel.
     # /switch <channel>: Switch to an existing named channel that user has already joined.
 
+def cmd_say(sender_soc, server: SocketAddress, active_channel: str, msg: str):
+    datagram = build_say_request(active_channel, msg)
+    send_datagram(sender_soc, server, datagram)
+    return
+
 
 def cmd_exit():
-    datagram = build_logout_request(0)
+    datagram = build_logout_request()
     send_datagram(datagram)
     return
 
     # REQUEST
     #    : Logout the user and exit the client software.
+
 
 def cmd_join(channel: str):
     return
@@ -54,24 +87,31 @@ def cmd_leave(channel: str):
     # 3. Server responds sucess or failure
     # 4. if fail, print error message (two different types- no channel, not in channel)
 
+
 def cmd_list(sender_soc, server: SocketAddress):
     datagram = build_list_request()
     send_datagram(sender_soc, server, datagram)
+
+    #reponse handled by listenerThread
     return
+
     # REQUEST
     #   : List the names of all channels. If no channels exist, print an error message.
     # 1. request server for available channels 
 
-def cmd_who(channel: str):
+
+def cmd_who(sender_soc, server: SocketAddress, channel: str):
+    datagram = build_who_request(channel)
+    send_datagram(sender_soc, server, datagram)
+
+    #response handled by listenerThread
     return
-    # REQUEST
-    #  : List the users who are on the named channel. If the channel does not exist, print an error message.
-    # 2. request server for users on a channel
+
 
 def cmd_switch(channel: str):
     return
     # LOCAL
-    # : Switch to an existing named channel that user has already joined. If the user is not in the channel, print an error message.
+    # : Switch to an existing named channel that user has already joined.
 #endregion
 
 def main():
@@ -88,13 +128,14 @@ def main():
 
 
     server = SocketAddress((server_host, int(server_port)))
-
     client_soc = create_client_socket(server)
+    active_channel = "Common"
 
     while (True):
-        command = input(">")
-        parsed_command = command.strip().split()
-        match parsed_command:
+        input_prompt = input(">")
+        parsed_input = input_prompt.strip().split()
+
+        match parsed_input:
             case ["/exit"]:
                 #cmd_exit(server)
                 print("executing cmd _exit()")
@@ -123,9 +164,21 @@ def main():
                 print(f"executing cmd_switch({channel})")
                 #cmd_switch(server)
 
+            case ["/"]:
+                print(f"Unknown command: {parsed_input}")
+            
             case _:
-                print(f"Unknown command: {parsed_command}")
-                
+                print(f"executing cmd_say({input_prompt})")
+
+                byte_count = len(input_prompt.encode("utf-8"))
+                if (byte_count>64):
+                    print("message exceeded 64 bytes: message not sent")
+                    continue
+                cmd_say(active_channel, input_prompt)
+
+
+        
+
     #handle new thread creations and thread management
     #also communicates with the server to get required information directly
     #when to create new thread: 

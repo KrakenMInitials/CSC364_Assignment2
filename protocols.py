@@ -60,7 +60,7 @@ def parse_list_response(datagram: bytes) -> list[str]:
         offset += 32
     return channels
 
-def parse_who_response(datagram: bytes) -> tuple[str, list[str]]:
+def parse_who_response(datagram: bytes) -> list[str]:
     _, count = struct.unpack("!II", datagram[:8])
     channel_bytes = struct.unpack("!32s", datagram[8:40])[0]
     channel = channel_bytes.rstrip(b'\x00').decode('utf-8')
@@ -71,7 +71,7 @@ def parse_who_response(datagram: bytes) -> tuple[str, list[str]]:
         (user_bytes,) = struct.unpack("!32s", datagram[offset:offset+32])
         users.append(user_bytes.rstrip(b'\x00').decode('utf-8'))
         offset += 32
-    return channel, users
+    return users
 
 def parse_error_response(datagram: bytes) -> str:
     _, error_bytes = struct.unpack("!I64s", datagram)

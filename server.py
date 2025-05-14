@@ -1,7 +1,6 @@
 import sys
 import time
 import threading
-import struct
 from protocols import *
 from typing import List
 import queue
@@ -41,8 +40,7 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
             if x.user_address == clientAddress:
                 user = x
         
-
-        msg_type = struct.unpack("!I", current_datagram[:4])[0]
+        msg_type = get_message_type(current_datagram)
 
         match msg_type:
             case 0:
@@ -80,8 +78,10 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
 
 
 def handle_login(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+    return
 
 def handle_logout(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+    return
 
 def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes):
     return
@@ -99,20 +99,32 @@ def handle_leave(server_soc: socket.socket, user: User, recieved_datagram: bytes
     # 5. if channel is empty, remove channel from server
 
 def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+     = parse_say_request(recieved_datagram)
+
 
 def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     #no need parsing parse_list_request() returns None and isnt required
 
-    response_datagram = build_list_response(list(channel_to_user))
+    channel_list = list(channel_to_user)
+    if len(channel_list == 0):
+        response_datagram = build_error_response("There are no channels created on the server.")
+    else:
+        response_datagram = build_list_response(channel_list)
     send_datagram(server_soc, user.user_address, response_datagram)
+
 
 def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     channel =  parse_who_request(recieved_datagram)
 
-    response_datagram = build_who_response(channel, list(channel_to_user[user.username]))
+    users_list = list(channel_to_user[user.username])
+    if len(users_list == 0):
+        response_datagram = build_error_response(f"There are no users active in the channel {channel}.")
+    else:
+        response_datagram = build_who_response(channel, users_list)
     send_datagram(response_datagram)
 
 def handle_keepalive(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+    return
 
 #endregion
 
