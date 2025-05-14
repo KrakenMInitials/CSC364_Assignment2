@@ -10,7 +10,7 @@ def create_server_socket(socket_address: SocketAddress):
     try:
         soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         soc.bind(socket_address)
-        print(f"[SERVER] Server socket created on {socket_address[1]}.")
+        print(f"[SERVER] Server socket created on {socket_address[0]}:{socket_address[1]}.")
         return soc
     except socket.error as e:
         print(f"Socket creation failed with error: {e} on port: {socket_address[1]}")
@@ -19,7 +19,9 @@ def create_server_socket(socket_address: SocketAddress):
 
 def serverListener(server_soc : socket.socket, request_queue: queue.Queue): #thread to handle all incoming messages and queue in queue
     while (True):
+        print("Waiting...")
         datagram, client_address = server_soc.recvfrom(1024)
+        print("Recieved something...")
         request_queue.put((datagram, client_address))
         #add datagam to request_queue
         #have to consider whether to 
@@ -31,50 +33,43 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
     """
     has to decide which handler to run by peeking into the first 4 bytes of recieved atagrams
     """
-    while (request_queue.not_empty):
-        current_datagram, clientAddress = request_queue.get(timeout=1)
+    while (True):
+        try:
+            current_datagram, clientAddress = request_queue.get(timeout=1)
+            print(f"Processing {clientAddress} request...")
+            user: User
+            for user in list(user_to_channel):
+                if user.user_address == clientAddress:
+                    break
+            if not user:
+                print("Internal server error: There is no User stored with clientAddress")
 
-        user: User
-        x: User
-        for x in list(user_to_channel):
-            if x.user_address == clientAddress:
-                user = x
-        
-        msg_type = get_message_type(current_datagram)
-
-        match msg_type:
-            case 0:
-                handle_login(server_soc, user, current_datagram)
-
-            case 1:
-                handle_logout(server_soc, user, current_datagram)
-
-            case 2:
-                handle_join(server_soc, user, current_datagram)
-
-            case 3:
-                handle_leave(server_soc, user, current_datagram)
-
-            case 4:
-                handle_say(server_soc, user, current_datagram)
-
-            case 5:
-                handle_list(server_soc, user, current_datagram, channel_to_user)
-
-            case 6:
-                handle_who(server_soc, user, current_datagram, channel_to_user)
-
-            case 7:
-                handle_keepalive(server_soc, user, current_datagram)
-
-            case _:
-                print(f"Datagram with unknown message type ignored.")
-        
+            msg_type = get_message_type(current_datagram)
+            match msg_type:
+                case 0:
+                    handle_login(server_soc, user, current_datagram)
+                case 1:
+                    handle_logout(server_soc, user, current_datagram)
+                case 2:
+                    handle_join(server_soc, user, current_datagram)
+                case 3:
+                    handle_leave(server_soc, user, current_datagram)
+                case 4:
+                    handle_say(server_soc, user, current_datagram)
+                case 5:
+                    handle_list(server_soc, user, current_datagram, channel_to_user)
+                case 6:
+                    handle_who(server_soc, user, current_datagram, channel_to_user)
+                case 7:
+                    handle_keepalive(server_soc, user, current_datagram)
+                case _:
+                    print(f"Datagram with unknown message type ignored.")
+        except queue.Empty:
+            continue
 
 #region Handle_ functions
     #handle_ functions have to parse and send datagram as neccessary
     #each handle corresponds to the client protocol NOT the commands
-
 
 
 def handle_login(server_soc: socket.socket, user: User, recieved_datagram: bytes):
@@ -101,6 +96,7 @@ def handle_leave(server_soc: socket.socket, user: User, recieved_datagram: bytes
 
 def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     channel, msg = parse_say_request(recieved_datagram)
+    print("hit say")
 
     if channel not in channel_to_user:
         response_datagram = build_error_response("Channel included in say_request doesn't exist. "
@@ -116,6 +112,7 @@ def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, 
 
 def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     #no need parsing parse_list_request() returns None and isnt required
+    print("hit list")
 
     channel_list = list(channel_to_user)
     if len(channel_list == 0):
@@ -126,6 +123,7 @@ def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes,
     return
 
 def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
+    print("hit who")
     channel =  parse_who_request(recieved_datagram)
 
     users_list = list(channel_to_user[user.username])
@@ -142,21 +140,21 @@ def handle_keepalive(server_soc: socket.socket, user: User, recieved_datagram: b
 #endregion
 
 def main():
-    if (sys.argc != 3):
+    if (len(sys.argv) != 3):
         print(f"Invalid arguments: <hostname> <portnumber> <username> (expected 3)")
         exit(1)
         
     server_host = sys.argv[1] # hostname or IP address
     server_port = sys.argv[2] # port number
 
-    user_to_channel: dict[str, List[str]]
+    user_to_channel = dict[str, List[str]]
     channel_to_user = dict[str, List[User]]     
+    request_queue = queue.Queue()
+    server_soc = create_server_socket((server_host, int(server_port)))
 
-    request_queue = queue.Queue
+    threading.Thread(target=serverListener, name="listenerThread", args=(server_soc,request_queue,))
 
-    server_soc = create_server_socket((server_host, server_port))
-
-
+    global_handler(server_soc, request_queue, user_to_channel, channel_to_user)
 
 if __name__ == "__main__":
     main()

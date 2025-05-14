@@ -3,17 +3,16 @@ from globals import *
 from protocols import *
 import re
 
-def create_client_socket(server: SocketAddress):
+def create_client_socket():
     try:
         soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"[CLIENT] Client socket created on {server[1]}.")
         return soc
     except socket.error as e:
-        print(f"Socket creation failed with error: {e} on port: {server[1]}")
+        print(f"Socket creation failed with error: {e}")
         sys.exit()
 
 
-def clientListener(client_soc: socket.socket):     #listenerThread
+def client_listener(client_soc: socket.socket):     #listenerThread
     while (True):
         recieved_datagram = client_soc.recvfrom(1024)
 
@@ -91,19 +90,13 @@ def cmd_leave(channel: str):
 def cmd_list(sender_soc, server: SocketAddress):
     datagram = build_list_request()
     send_datagram(sender_soc, server, datagram)
-
     #reponse handled by listenerThread
     return
-
-    # REQUEST
-    #   : List the names of all channels. If no channels exist, print an error message.
-    # 1. request server for available channels 
 
 
 def cmd_who(sender_soc, server: SocketAddress, channel: str):
     datagram = build_who_request(channel)
     send_datagram(sender_soc, server, datagram)
-
     #response handled by listenerThread
     return
 
@@ -112,6 +105,8 @@ def cmd_switch(activeChannel: str):
     # LOCAL (confirmed, no need server communication)
     #placeholder for completeness 
     return
+#endregion
+
 
 def main():
     if (len(sys.argv) != 4):
@@ -127,8 +122,14 @@ def main():
 
 
     server = SocketAddress((server_host, int(server_port)))
-    client_soc = create_client_socket(server)
+    client_soc = create_client_socket()
+    client_soc.bind(("0.0.0.0", 0))
+    ip, port = client_soc.getsockname()
+
+    print(f"[CLIENT] Client socket binded to {ip}:{port}")
     active_channel = "Common"
+
+    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,)).start()
 
     while (True):
         input_prompt = input(">")
@@ -136,44 +137,39 @@ def main():
 
         match parsed_input:
             case ["/exit"]:
-                #cmd_exit(server)
                 print("executing cmd _exit()")
+                cmd_exit()
 
             case ["/join", channel]:
-                #cmd_join(server)
                 print(f"executing cmd_join({channel})")
+                cmd_join()
 
             case ["/leave", channel]:
-                #cmd_leave(server)
                 print(f"executing cmd_leave({channel})")
-
-
+                cmd_leave()
 
             case ["/list"]:
                 print("executing cmd_list()")
-                cmd_list(server)
-
-
+                cmd_list(client_soc, server)
 
             case ["/who", channel]:
                 print(f"executing cmd_who({channel})")
-                #cmd_who(server)
+                cmd_who(client_soc, server, channel)
 
             case ["/switch", channel]:
-                print(f"executing cmd_switch({channel})")
+                print(f"switching local activeChannel to {channel}")
                 active_channel = channel
 
-            case ["/"]:
+            case s if s[0] == '/':
                 print(f"Unknown command: {parsed_input}")
             
             case _:
                 print(f"executing cmd_say({input_prompt})")
-
                 byte_count = len(input_prompt.encode("utf-8"))
                 if (byte_count>64):
                     print("message exceeded 64 bytes: message not sent")
                     continue
-                cmd_say(active_channel, input_prompt)
+                cmd_say(client_soc, server, active_channel, input_prompt)
 
 
         
