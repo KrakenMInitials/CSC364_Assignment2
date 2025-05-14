@@ -1,0 +1,33 @@
+Client-Side
+Build Functions:
+0 -> login_request
+1 -> logout_request
+2 -> join_request
+3 -> leave_request
+4 -> say_request
+5 -> list_request
+6 -> who_request
+7 -> keepalive_request
+
+Parse Functions:
+0 -> say_response
+1 -> list_response
+2 -> who_response
+3 -> error_response
+
+Server-Side
+Build Functions:
+0 -> say_response
+1 -> list_response
+2 -> who_response
+3 -> error_response
+
+Parse Functions:
+0 -> login_request
+1 -> logout_request
+2 -> join_request
+3 -> leave_request
+4 -> say_request
+5 -> list_request
+6 -> who_request
+7 -> keepalive_request

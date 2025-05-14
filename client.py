@@ -1,4 +1,4 @@
-import sys, socket, time, struct, threading
+import sys, time, struct, threading
 from globals import *
 from protocols import *
 import re
@@ -15,14 +15,9 @@ def create_client_socket(server: SocketAddress):
 
 def clientListener(client_soc: socket.socket):     #will create a socket to listen to and handle connections
     while (True):
-        raw_message = client_soc.recvfrom(4096)
+        raw_message = client_soc.recvfrom(1024)
         channel, user, text = parse_say_response(raw_message)
         print(f"[{channel}][{user}] {text}")
-
-
-def send_to_server(client_soc: socket.socket, server: SocketAddress, datagram):
-    client_soc.sendto(datagram, server)
-    return
 
 #region Command functions
     # /exit
@@ -34,14 +29,14 @@ def send_to_server(client_soc: socket.socket, server: SocketAddress, datagram):
 
 
 def cmd_exit():
-    datagram = build_logout(0)
-    send_to_server(datagram)
+    datagram = build_logout_request(0)
+    send_datagram(datagram)
     return
 
     # REQUEST
     #    : Logout the user and exit the client software.
 
-def cmd_join(channel: str, user: UserAddress):
+def cmd_join(channel: str):
     return
     # REQUEST
     #    : Join the named channel. If the channel does not exist, create it.
@@ -50,7 +45,7 @@ def cmd_join(channel: str, user: UserAddress):
     # 2. SERVER-side does all the work
     # 4. Set channel as ACTIVECHANNEL to be able to send messages
 
-def cmd_leave(channel: str, user: UserAddress):
+def cmd_leave(channel: str):
     return
     # REQUEST
     #   : Leave the named channel. If the user is not in the channel, print an error message.
@@ -59,7 +54,9 @@ def cmd_leave(channel: str, user: UserAddress):
     # 3. Server responds sucess or failure
     # 4. if fail, print error message (two different types- no channel, not in channel)
 
-def cmd_list():
+def cmd_list(sender_soc, server: SocketAddress):
+    datagram = build_list_request()
+    send_datagram(sender_soc, server, datagram)
     return
     # REQUEST
     #   : List the names of all channels. If no channels exist, print an error message.
@@ -99,32 +96,32 @@ def main():
         parsed_command = command.strip().split()
         match parsed_command:
             case ["/exit"]:
-                #cmd_exit()
+                #cmd_exit(server)
                 print("executing cmd _exit()")
 
             case ["/join", channel]:
-                #cmd_join()
+                #cmd_join(server)
                 print(f"executing cmd_join({channel})")
 
             case ["/leave", channel]:
-                #cmd_leave()
+                #cmd_leave(server)
                 print(f"executing cmd_leave({channel})")
 
 
 
             case ["/list"]:
                 print("executing cmd_list()")
-                #cmd_list()
+                cmd_list(server)
 
 
 
             case ["/who", channel]:
                 print(f"executing cmd_who({channel})")
-                #cmd_who()
+                #cmd_who(server)
 
             case ["/switch", channel]:
                 print(f"executing cmd_switch({channel})")
-                #cmd_switch()
+                #cmd_switch(server)
 
             case _:
                 print(f"Unknown command: {parsed_command}")
