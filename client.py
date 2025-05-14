@@ -1,163 +1,30 @@
 import sys, socket, time, struct, threading
-from collections import namedtuple
-from server import serverAddress, userAddress, user
-import ctypes
-uint32 = ctypes.c_uint32
+from globals import *
+from protocols import *
+import re
 
-if (sys.argc != 3){
-    print(f"Invalid arguments: <hostname> <portnumber> <username> (expected 3)")
-    exit(1)
-}
-
-host = sys.argv[1] # hostname or IP address
-port = sys.argv[2] # port number
-user = sys.argv[3] # username
-
-
-def create_socket(host, port):
-
+def create_client_socket(server: SocketAddress):
     try:
         soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"[CLIENT] Client socket created on {port}.")
+        print(f"[CLIENT] Client socket created on {server[1]}.")
         return soc
     except socket.error as e:
-        print(f"Socket creation failed with error: {e} on port: {port}")
+        print(f"Socket creation failed with error: {e} on port: {server[1]}")
         sys.exit()
 
 
+def clientListener(client_soc: socket.socket):     #will create a socket to listen to and handle connections
+    while (True):
+        raw_message = client_soc.recvfrom(4096)
+        channel, user, text = parse_say_response(raw_message)
+        print(f"[{channel}][{user}] {text}")
 
 
+def send_to_server(client_soc: socket.socket, server: SocketAddress, datagram):
+    client_soc.sendto(datagram, server)
+    return
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def create_datagram(message_type: int, payload_str: str = None) -> bytes:
-    if not (0 <= message_type <= 0xFFFFFFFF): #validate messageType is within uint32 range
-        raise ValueError("messageType out of range for uint32")
-    
-    datagram = None
-    
-    def build_login(msg_type: int, channel_name: str) -> bytes:
-        # Ensure payload is 32-byte padded UTF-8
-        channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
-        # Pack 4-byte type + 32-byte payload
-        return struct.pack("!I32s", msg_type, channel_bytes)
-    
-
-    def build_logout(msg_type: int) -> bytes:
-        return struct.pack("!I", msg_type)
-
-
-    def build_join(msg_type: int, channel_name: str) -> bytes: 
-        channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
-        return struct.pack("!I32s", msg_type, channel_bytes)
-
-
-    def build_leave(msg_type: int, channel_name: str) -> bytes:
-        channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
-        return struct.pack("!I32s", msg_type, channel_bytes)
-    
-
-    def build_say(msg_type: int, channel_name: str, text: str) -> bytes:
-        channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
-        text_bytes = text.encode('utf-8')[:64].ljust(64, b'\x00')
-        return struct.pack("!I32s64s", msg_type, channel_bytes, text_bytes)
-   
-
-    def build_list(msg_type: int) -> bytes:
-        return struct.pack("!I", msg_type)
-
-
-    def build_who(msg_type: int, channel_name: str, text: str) -> bytes:
-        channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00')
-        return struct.pack("!I32s", msg_type, channel_bytes)
-
-
-    def build_keepalive(msg_type: int) -> bytes:
-        return struct.pack("!I", msg_type)
-
-
-
-
-
-
-
-    if payload_str is None: #Header with type only
-        datagram = struct.pack("!I", message_type) # 4 bytes for message type
-    else: #Header + payload
-        datagram = struct.pack("!I32s", message_type, payload_bytes) # 32 bytes for payload
-    return datagram
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def parse_datagram(datagram):
-    messageType, payload = struct.unpack("!I32s", datagram)
-    payload_str = payload.decode('utf-8').rstrip('\x00')  # remove null bytes
-    return messageType, payload_str
-
-def client_listening_thread(): #listends to incoming messages from server 
-    data, addr = sock.recvfrom(1024)  # 1024 is safe for all message types
-
-
-################################################
+#region Command functions
     # /exit
     # /join <channel>
     # /leave <channel>
@@ -166,30 +33,107 @@ def client_listening_thread(): #listends to incoming messages from server
     # /switch <channel>: Switch to an existing named channel that user has already joined.
 
 
-#def cmd_exit(): LOCAL
-#    : Logout the user and exit the client software.
+def cmd_exit():
+    datagram = build_logout(0)
+    send_to_server(datagram)
+    return
 
-# def cmd_join(channel: String, user: userAddress):
-#    : Join the named channel. If the channel does not exist, create it.
-# 1. request server for channel information + userAddress information
-# 2. SERVER-side does all the work
-# 4. Set channel as ACTIVECHANNEL to be able to send messages
+    # REQUEST
+    #    : Logout the user and exit the client software.
 
-# def cmd_leave(channel: String, user: userAddress):
-#   : Leave the named channel. If the user is not in the channel, print an error message.
-# 1. request server to leave channel
-# 2. SERVER-side does all the work
-# 3. Server responds sucess or failure
-# 4. if fail, print error message (two different types- no channel, not in channel)
+def cmd_join(channel: str, user: UserAddress):
+    return
+    # REQUEST
+    #    : Join the named channel. If the channel does not exist, create it.
+    # CREATES A NEW LISTENER THREAD
+    # 1. request server for channel information + UserAddress information
+    # 2. SERVER-side does all the work
+    # 4. Set channel as ACTIVECHANNEL to be able to send messages
 
-# def cmd_list():
-#   : List the names of all channels. If no channels exist, print an error message.
-# 1. request server for available channels 
+def cmd_leave(channel: str, user: UserAddress):
+    return
+    # REQUEST
+    #   : Leave the named channel. If the user is not in the channel, print an error message.
+    # 1. request server to leave channel
+    # 2. SERVER-side does all the work
+    # 3. Server responds sucess or failure
+    # 4. if fail, print error message (two different types- no channel, not in channel)
 
-# def cmd_who(channel: String):
-#  : List the users who are on the named channel. If the channel does not exist, print an error message.
-# 2. request server for users on a channel
+def cmd_list():
+    return
+    # REQUEST
+    #   : List the names of all channels. If no channels exist, print an error message.
+    # 1. request server for available channels 
 
-# def cmd_switch(channel: String):
-# : Switch to an existing named channel that user has already joined. If the user is not in the channel, print an error message.
+def cmd_who(channel: str):
+    return
+    # REQUEST
+    #  : List the users who are on the named channel. If the channel does not exist, print an error message.
+    # 2. request server for users on a channel
+
+def cmd_switch(channel: str):
+    return
+    # LOCAL
+    # : Switch to an existing named channel that user has already joined. If the user is not in the channel, print an error message.
+#endregion
+
+def main():
+    if (len(sys.argv) != 4):
+        print(f"Invalid arguments: <hostname> <portnumber> <username> (expected 3)")
+        exit(1)
+
+    server_host = sys.argv[1] # hostname or IP address
+    server_port = sys.argv[2] # port number
+    local_user = sys.argv[3] # username
+    print(f"Host: {server_host}")
+    print(f"Port: {server_port}")
+    print(f"Username: {local_user}")
+
+
+    server = SocketAddress((server_host, int(server_port)))
+
+    client_soc = create_client_socket(server)
+
+    while (True):
+        command = input(">")
+        parsed_command = command.strip().split()
+        match parsed_command:
+            case ["/exit"]:
+                #cmd_exit()
+                print("executing cmd _exit()")
+
+            case ["/join", channel]:
+                #cmd_join()
+                print(f"executing cmd_join({channel})")
+
+            case ["/leave", channel]:
+                #cmd_leave()
+                print(f"executing cmd_leave({channel})")
+
+
+
+            case ["/list"]:
+                print("executing cmd_list()")
+                #cmd_list()
+
+
+
+            case ["/who", channel]:
+                print(f"executing cmd_who({channel})")
+                #cmd_who()
+
+            case ["/switch", channel]:
+                print(f"executing cmd_switch({channel})")
+                #cmd_switch()
+
+            case _:
+                print(f"Unknown command: {parsed_command}")
+                
+    #handle new thread creations and thread management
+    #also communicates with the server to get required information directly
+    #when to create new thread: 
+
+
+if __name__ == "__main__":
+    main()
 
