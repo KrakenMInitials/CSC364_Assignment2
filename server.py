@@ -84,6 +84,7 @@ def handle_logout(server_soc: socket.socket, user: User, recieved_datagram: byte
     return
 
 def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+    #have to handle case where user cannot say to a channel they are not in
     return
     # 1. client sends a JOIN request w/ (channel) + UserAddress
     # 2. if channel exists, create channel and create new thread to 
@@ -98,9 +99,20 @@ def handle_leave(server_soc: socket.socket, user: User, recieved_datagram: bytes
     # 4. if channel does not exist, print error message
     # 5. if channel is empty, remove channel from server
 
-def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes):
-     = parse_say_request(recieved_datagram)
+def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
+    channel, msg = parse_say_request(recieved_datagram)
 
+    if channel not in channel_to_user:
+        response_datagram = build_error_response("Channel included in say_request doesn't exist. "
+                                                    "Switch to one of the existing channel")
+        send_datagram(server_soc, user.user_address, response_datagram)
+    elif user not in channel_to_user[user]:
+        response_datagram = build_error_response("User attempted to message a channel they are not a part of.")
+        send_datagram(server_soc, user.user_address, response_datagram)
+    else:
+        response_datagram = build_say_response(channel, user.username, msg)
+        for users in channel_to_user[channel]:
+            send_datagram(server_soc, users.user_address, response_datagram)
 
 def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     #no need parsing parse_list_request() returns None and isnt required
@@ -111,7 +123,7 @@ def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes,
     else:
         response_datagram = build_list_response(channel_list)
     send_datagram(server_soc, user.user_address, response_datagram)
-
+    return
 
 def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
     channel =  parse_who_request(recieved_datagram)
@@ -122,6 +134,7 @@ def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, 
     else:
         response_datagram = build_who_response(channel, users_list)
     send_datagram(response_datagram)
+    return
 
 def handle_keepalive(server_soc: socket.socket, user: User, recieved_datagram: bytes):
     return
