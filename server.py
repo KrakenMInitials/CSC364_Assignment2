@@ -19,9 +19,9 @@ def create_server_socket(socket_address: SocketAddress):
 
 def serverListener(server_soc : socket.socket, request_queue: queue.Queue): #thread to handle all incoming messages and queue in queue
     while (True):
-        print("[Listener] Waiting...")
+        print(f"[{threading.current_thread().name}] Waiting...")
         datagram, client_address = server_soc.recvfrom(1024)
-        print("[Listener] Recieved something...")
+        print(f"[{threading.current_thread().name}] Recieved something...")
         request_queue.put((datagram, client_address))
         #add datagam to request_queue
         #have to consider whether to 
@@ -116,8 +116,17 @@ def handle_login(server_soc: socket.socket, clientAddress: SocketAddress ,
 def handle_logout(server_soc: socket.socket, user: User, recieved_datagram: bytes):
     return
 
-def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes):
-    #have to handle case where user cannot say to a channel they are not in
+def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes, user_to_channel: dict[User, List[str]], channel_to_user: dict[str, List[User]]):
+    channel = parse_join_request(recieved_datagram)
+
+    #add user to channel_to_user
+    if channel not in list(channel_to_user): #if channel doesnt exit
+        channel_to_user[channel] = [user]
+    else: #if channel exists
+        channel_to_user[channel].append(user)
+
+    #add channel in user_to_channel
+    user_to_channel[user].append(channel)
     return
     # 1. client sends a JOIN request w/ (channel) + UserAddress
     # 2. if channel exists, create channel and create new thread to 
@@ -136,10 +145,9 @@ def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, 
     channel, msg = parse_say_request(recieved_datagram)
 
     if channel not in channel_to_user:
-        response_datagram = build_error_response("Channel included in say_request doesn't exist. "
-                                                    "Switch to one of the existing channel")
+        response_datagram = build_error_response("Active Channel doesn't exist.")
         send_datagram(server_soc, user.user_address, response_datagram)
-    elif user not in list(channel_to_user[channel]): ##CAUSES KEY ERROR
+    elif user not in list(channel_to_user[channel]):
         response_datagram = build_error_response("User attempted to message a channel they are not a part of.")
         send_datagram(server_soc, user.user_address, response_datagram)
     else:

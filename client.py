@@ -12,35 +12,44 @@ def create_client_socket():
         sys.exit()
 
 
-def client_listener(client_soc: socket.socket):     #listenerThread
+def client_listener(client_soc: socket.socket, exit_event: threading.Event):     #listenerThread
+    client_soc.settimeout(5)
     while (True):
-        recieved_datagram,_ = client_soc.recvfrom(1024)
+        try:
+            recieved_datagram,_ = client_soc.recvfrom(1024)
 
-        #Response can be
-        #say response
-        #list response
-        #who response
-        #error_response
-        msg_type = get_message_type(recieved_datagram)
-        if ( msg_type == 0): #say 
-            channel, user, text = parse_say_response(recieved_datagram)
-            print(f"[{channel}][{user}] {text}")
+            #Response can be
+            #say response
+            #list response
+            #who response
+            #error_response
+            msg_type = get_message_type(recieved_datagram)
+            if ( msg_type == 0): #say 
+                channel, user, text = parse_say_response(recieved_datagram)
+                print(f"[{channel}][{user}] {text}")
 
-        elif (msg_type == 1): #list 
-            channels_arr = parse_list_response(recieved_datagram)
-            print("Existing channels: ")
-            for x in channels_arr:
-                print(x)
-        
-        elif (msg_type == 2): #who
-            users_arr, channel = parse_who_response(recieved_datagram)
-            print(f"Users on channel {channel}:")
-            for x in users_arr:
-                print(x)
+            elif (msg_type == 1): #list 
+                channels_arr = parse_list_response(recieved_datagram)
+                print("Existing channels: ")
+                for x in channels_arr:
+                    print("   " + str(x))
+            
+            elif (msg_type == 2): #who
+                users_arr, channel = parse_who_response(recieved_datagram)
+                print(f"Users on channel {channel}:")
+                for x in users_arr:
+                    print("   " + str(x))
 
-        elif ( msg_type == 3): #error
-            error_msg = parse_error_response(recieved_datagram)
-            raise ValueError(f"Error message from server: \n\t{error_msg}")
+            elif ( msg_type == 3): #error
+                error_msg = parse_error_response(recieved_datagram)
+                print(f"[CONSOLE] Error message from server: \n   {error_msg}")
+        except socket.timeout:
+            #no problems, just quick check for exit_event
+            if exit_event.is_set():
+                return
+            continue
+        except Exception as e:
+            print(f"[CONSOLE] Exception in client listener thread: {e} \nBut continuing regular operations...")
 
 
 #region Command functions
@@ -62,16 +71,19 @@ def login_user(sender_soc, server: SocketAddress, username: str):
     send_datagram(sender_soc, server, datagram)
     return
 
-def cmd_exit():
+def cmd_exit(server_soc, server: SocketAddress, exit_event: threading.Event):
     datagram = build_logout_request()
-    send_datagram(datagram)
-    return
+    send_datagram(server_soc, server, datagram)
+    exit_event.set()
+    sys.exit(0)
 
     # REQUEST
     #    : Logout the user and exit the client software.
 
 
-def cmd_join(channel: str):
+def cmd_join(server_soc, server: SocketAddress, channel: str):
+    datagram = build_join_request(channel)
+    send_datagram(server_soc, server, datagram) 
     return
     # REQUEST
     #    : Join the named channel. If the channel does not exist, create it.
@@ -129,10 +141,11 @@ def main():
     client_soc.bind(("0.0.0.0", 0))
     ip, port = client_soc.getsockname()
 
-    print(f"[CLIENT] Client socket binded to {ip}:{port}")
+    print(f"[CONSOLE] Client socket binded to {ip}:{port}")
     active_channel = "Common"
 
-    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,)).start()
+    exit_event = threading.Event()
+    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event,)).start()
 
     print(f"Client logged in.")
     login_user(client_soc, server, local_username)
@@ -144,8 +157,8 @@ def main():
 
         match parsed_input:
             case ["/exit"]:
-                print("executing cmd _exit()")
-                cmd_exit()
+                print("Exiting...")
+                cmd_exit(client_soc, server, exit_event)
 
             case ["/join", channel]:
                 print(f"executing cmd_join({channel})")
@@ -156,25 +169,23 @@ def main():
                 cmd_leave()
 
             case ["/list"]:
-                print("executing cmd_list()")
                 cmd_list(client_soc, server)
 
             case ["/who", channel]:
-                print(f"executing cmd_who({channel})")
                 cmd_who(client_soc, server, channel)
 
             case ["/switch", channel]:
-                print(f"switching local activeChannel to {channel}")
+                print(f"[CONSOLE] switching local activeChannel to {channel}")
                 active_channel = channel
 
-            case s if s[0] == '/':
-                print(f"Unknown command: {parsed_input}")
+            case s if s[0][0] == '/':
+                print(f"[CONSOLE] Unknown command: {parsed_input}")
             
             case _:
                 print(f"executing cmd_say({input_prompt})")
                 byte_count = len(input_prompt.encode("utf-8"))
                 if (byte_count>64):
-                    print("message exceeded 64 bytes: message not sent")
+                    print("[CONSOLE] message exceeded 64 bytes: message not sent")
                     continue
                 cmd_say(client_soc, server, active_channel, input_prompt)
 
