@@ -12,7 +12,7 @@ def create_client_socket():
         sys.exit()
 
 
-def client_listener(client_soc: socket.socket, exit_event: threading.Event):     #listenerThread
+def client_listener(client_soc: socket.socket, exit_event: threading.Event, activeChannel: list[str]):     #listenerThread
     client_soc.settimeout(5)
     while (True):
         try:
@@ -32,7 +32,10 @@ def client_listener(client_soc: socket.socket, exit_event: threading.Event):    
                 channels_arr = parse_list_response(recieved_datagram)
                 print("Existing channels: ")
                 for x in channels_arr:
-                    print("   " + str(x))
+                    if x == activeChannel[0]:
+                        print("   " + str(x) + "*")
+                    else:
+                        print("   " + str(x))
             
             elif (msg_type == 2): #who
                 users_arr, channel = parse_who_response(recieved_datagram)
@@ -46,6 +49,7 @@ def client_listener(client_soc: socket.socket, exit_event: threading.Event):    
         except socket.timeout:
             #no problems, just quick check for exit_event
             if exit_event.is_set():
+                print("listening thread closed.")
                 return
             continue
         except Exception as e:
@@ -92,7 +96,9 @@ def cmd_join(server_soc, server: SocketAddress, channel: str):
     # 2. SERVER-side does all the work
     # 4. Set channel as ACTIVECHANNEL to be able to send messages
 
-def cmd_leave(channel: str):
+def cmd_leave(server_soc, server: SocketAddress, channel: str):
+    datagram = build_leave_request(channel)
+    send_datagram(server_soc, server, datagram)
     return
     # REQUEST
     #   : Leave the named channel. If the user is not in the channel, print an error message.
@@ -142,10 +148,10 @@ def main():
     ip, port = client_soc.getsockname()
 
     print(f"[CONSOLE] Client socket binded to {ip}:{port}")
-    active_channel = "Common"
+    active_channel = ["Common"]
 
     exit_event = threading.Event()
-    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event,)).start()
+    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,)).start()
 
     print(f"Client logged in.")
     login_user(client_soc, server, local_username)
@@ -163,12 +169,16 @@ def main():
             case ["/join", channel]:
                 print(f"executing cmd_join({channel})")
                 print(f"[CONSOLE] switching local activeChannel to {channel}")
-                active_channel = channel
+                active_channel[0] = channel
                 cmd_join(client_soc, server, channel)
 
             case ["/leave", channel]:
                 print(f"executing cmd_leave({channel})")
-                cmd_leave()
+                if active_channel[0] == channel:
+                    print(f"[CONSOLE] defaulting local activeChannel to Common")
+                    active_channel[0] = "Common"
+                cmd_leave(client_soc, server, channel)
+                
 
             case ["/list"]:
                 cmd_list(client_soc, server)
@@ -178,7 +188,7 @@ def main():
 
             case ["/switch", channel]:
                 print(f"[CONSOLE] switching local activeChannel to {channel}")
-                active_channel = channel
+                active_channel[0] = channel
 
             case s if s[0][0] == '/':
                 print(f"[CONSOLE] Unknown command: {parsed_input}")
@@ -189,7 +199,7 @@ def main():
                 if (byte_count>64):
                     print("[CONSOLE] message exceeded 64 bytes: message not sent")
                     continue
-                cmd_say(client_soc, server, active_channel, input_prompt)
+                cmd_say(client_soc, server, active_channel[0], input_prompt)
 
 
         
