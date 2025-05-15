@@ -1,12 +1,12 @@
 import struct
 
 #region client-side build Functions
-def build_login_request(channel_name: str) -> bytes:
+def build_login_request(username: str) -> bytes:
     # Ensure payload is 32-byte padded UTF-8
     msg_type = 0
-    channel_bytes = channel_name.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
+    username_bytes = username.encode('utf-8')[:32].ljust(32, b'\x00') #pad with null bytes
     # Pack 4-byte type + 32-byte payload
-    return struct.pack("!I32s", msg_type, channel_bytes)
+    return struct.pack("!I32s", msg_type, username_bytes)
 
 def build_logout_request() -> bytes:
     msg_type = 1
@@ -71,7 +71,7 @@ def parse_who_response(datagram: bytes) -> list[str]:
         (user_bytes,) = struct.unpack("!32s", datagram[offset:offset+32])
         users.append(user_bytes.rstrip(b'\x00').decode('utf-8'))
         offset += 32
-    return users
+    return users, channel
 
 def parse_error_response(datagram: bytes) -> str:
     _, error_bytes = struct.unpack("!I64s", datagram)
@@ -104,7 +104,7 @@ def build_who_response(channel_name: str, users_array: list) -> bytes:
 
     for i in range(users_count):
         user_bytes = users_array[i].encode('utf-8')[:32].ljust(32, b'\x00')
-        datagramgram += user_bytes
+        datagram += user_bytes
     return datagram
 
 def build_error_response(error_message: str) -> bytes:

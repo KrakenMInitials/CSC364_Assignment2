@@ -19,9 +19,9 @@ def create_server_socket(socket_address: SocketAddress):
 
 def serverListener(server_soc : socket.socket, request_queue: queue.Queue): #thread to handle all incoming messages and queue in queue
     while (True):
-        print("Waiting...")
+        print("[Listener] Waiting...")
         datagram, client_address = server_soc.recvfrom(1024)
-        print("Recieved something...")
+        print("[Listener] Recieved something...")
         request_queue.put((datagram, client_address))
         #add datagam to request_queue
         #have to consider whether to 
@@ -37,30 +37,39 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
         try:
             current_datagram, clientAddress = request_queue.get(timeout=1)
             print(f"Processing {clientAddress} request...")
+
+            msg_type = get_message_type(current_datagram)
+            if msg_type == 0:
+                handle_login(server_soc, clientAddress, current_datagram, user_to_channel, channel_to_user)
+                continue
             user: User
             for user in list(user_to_channel):
                 if user.user_address == clientAddress:
                     break
             if not user:
                 print("Internal server error: There is no User stored with clientAddress")
-
-            msg_type = get_message_type(current_datagram)
+                continue
             match msg_type:
-                case 0:
-                    handle_login(server_soc, user, current_datagram)
                 case 1:
+                    print("LOG: handle_logout()")
                     handle_logout(server_soc, user, current_datagram)
                 case 2:
+                    print("LOG: handle_join()")
                     handle_join(server_soc, user, current_datagram)
                 case 3:
+                    print("LOG: handle_leave()")
                     handle_leave(server_soc, user, current_datagram)
                 case 4:
-                    handle_say(server_soc, user, current_datagram)
+                    print("LOG: handle_say()")
+                    handle_say(server_soc, user, current_datagram, channel_to_user)
                 case 5:
+                    print("LOG: handle_list()")
                     handle_list(server_soc, user, current_datagram, channel_to_user)
                 case 6:
+                    print("LOG: handle_logout()")
                     handle_who(server_soc, user, current_datagram, channel_to_user)
                 case 7:
+                    print("LOG: handle_keepalive()")
                     handle_keepalive(server_soc, user, current_datagram)
                 case _:
                     print(f"Datagram with unknown message type ignored.")
@@ -71,8 +80,37 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
     #handle_ functions have to parse and send datagram as neccessary
     #each handle corresponds to the client protocol NOT the commands
 
+def utility_get_usernames(user_to_channel: dict[User, List[str]]):
 
-def handle_login(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+    if not user_to_channel:
+        return []
+    
+    result = []
+    for x in user_to_channel:
+        result.append(x.username)
+    return result
+
+def handle_login(server_soc: socket.socket, clientAddress: SocketAddress ,
+                 recieved_datagram: bytes, user_to_channel: dict[User, List[str]], channel_to_user: dict[str, List[User]]):
+    username = parse_login_request(recieved_datagram)
+
+    existing_usernames = utility_get_usernames(user_to_channel)
+    if (username in existing_usernames): #if duplicate username exists
+        datagram = build_error_response("Username already exists. Please reopen client.")
+        send_datagram(server_soc, clientAddress, datagram)
+    else:
+        newUser = User(username, clientAddress, time.time())
+        user_to_channel[newUser] = ["Common"]
+        if "Common" not in channel_to_user:
+            channel_to_user["Common"] = []
+        channel_to_user["Common"].append(newUser)
+    return
+    #verify user doesn't exist yet
+    #user to channel
+        #add Common to user
+    #channel to user
+        #add user to Common
+
     return
 
 def handle_logout(server_soc: socket.socket, user: User, recieved_datagram: bytes):
@@ -94,15 +132,14 @@ def handle_leave(server_soc: socket.socket, user: User, recieved_datagram: bytes
     # 4. if channel does not exist, print error message
     # 5. if channel is empty, remove channel from server
 
-def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
+def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user: dict[str, List[User]]):
     channel, msg = parse_say_request(recieved_datagram)
-    print("hit say")
 
     if channel not in channel_to_user:
         response_datagram = build_error_response("Channel included in say_request doesn't exist. "
                                                     "Switch to one of the existing channel")
         send_datagram(server_soc, user.user_address, response_datagram)
-    elif user not in channel_to_user[user]:
+    elif user not in list(channel_to_user[channel]): ##CAUSES KEY ERROR
         response_datagram = build_error_response("User attempted to message a channel they are not a part of.")
         send_datagram(server_soc, user.user_address, response_datagram)
     else:
@@ -110,28 +147,26 @@ def handle_say(server_soc: socket.socket, user: User, recieved_datagram: bytes, 
         for users in channel_to_user[channel]:
             send_datagram(server_soc, users.user_address, response_datagram)
 
-def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
+def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user: dict[str, List[User]]):
     #no need parsing parse_list_request() returns None and isnt required
-    print("hit list")
-
     channel_list = list(channel_to_user)
-    if len(channel_list == 0):
+    if (len(channel_list) == 0):
         response_datagram = build_error_response("There are no channels created on the server.")
     else:
         response_datagram = build_list_response(channel_list)
     send_datagram(server_soc, user.user_address, response_datagram)
     return
 
-def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user):
-    print("hit who")
+def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_user: dict[str, List[User]]):
     channel =  parse_who_request(recieved_datagram)
 
-    users_list = list(channel_to_user[user.username])
-    if len(users_list == 0):
+    users_list = list(channel_to_user[channel])
+    if (len(users_list) == 0):
         response_datagram = build_error_response(f"There are no users active in the channel {channel}.")
     else:
-        response_datagram = build_who_response(channel, users_list)
-    send_datagram(response_datagram)
+        usernames_list = [x.username for x in users_list]
+        response_datagram = build_who_response(channel, usernames_list)
+    send_datagram(server_soc, user.user_address, response_datagram)
     return
 
 def handle_keepalive(server_soc: socket.socket, user: User, recieved_datagram: bytes):
@@ -147,12 +182,12 @@ def main():
     server_host = sys.argv[1] # hostname or IP address
     server_port = sys.argv[2] # port number
 
-    user_to_channel = dict[str, List[str]]
-    channel_to_user = dict[str, List[User]]     
+    user_to_channel: dict[User, List[str]] = {}
+    channel_to_user: dict[str, List[User]] = {}     
     request_queue = queue.Queue()
     server_soc = create_server_socket((server_host, int(server_port)))
 
-    threading.Thread(target=serverListener, name="listenerThread", args=(server_soc,request_queue,))
+    threading.Thread(target=serverListener, name="listenerThread", args=(server_soc,request_queue,)).start()
 
     global_handler(server_soc, request_queue, user_to_channel, channel_to_user)
 

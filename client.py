@@ -14,14 +14,13 @@ def create_client_socket():
 
 def client_listener(client_soc: socket.socket):     #listenerThread
     while (True):
-        recieved_datagram = client_soc.recvfrom(1024)
+        recieved_datagram,_ = client_soc.recvfrom(1024)
 
         #Response can be
         #say response
         #list response
         #who response
         #error_response
-        
         msg_type = get_message_type(recieved_datagram)
         if ( msg_type == 0): #say 
             channel, user, text = parse_say_response(recieved_datagram)
@@ -34,7 +33,7 @@ def client_listener(client_soc: socket.socket):     #listenerThread
                 print(x)
         
         elif (msg_type == 2): #who
-            users_arr = parse_who_response(recieved_datagram)
+            users_arr, channel = parse_who_response(recieved_datagram)
             print(f"Users on channel {channel}:")
             for x in users_arr:
                 print(x)
@@ -58,6 +57,10 @@ def cmd_say(sender_soc, server: SocketAddress, active_channel: str, msg: str):
     send_datagram(sender_soc, server, datagram)
     return
 
+def login_user(sender_soc, server: SocketAddress, username: str):
+    datagram = build_login_request(username)
+    send_datagram(sender_soc, server, datagram)
+    return
 
 def cmd_exit():
     datagram = build_logout_request()
@@ -115,10 +118,10 @@ def main():
 
     server_host = sys.argv[1] # hostname or IP address
     server_port = sys.argv[2] # port number
-    local_user = sys.argv[3] # username
+    local_username = sys.argv[3] # username
     print(f"Host: {server_host}")
     print(f"Port: {server_port}")
-    print(f"Username: {local_user}")
+    print(f"Username: {local_username}")
 
 
     server = SocketAddress((server_host, int(server_port)))
@@ -131,7 +134,11 @@ def main():
 
     threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,)).start()
 
+    print(f"Client logged in.")
+    login_user(client_soc, server, local_username)
+
     while (True):
+        time.sleep(0.5)
         input_prompt = input(">")
         parsed_input = input_prompt.strip().split()
 
