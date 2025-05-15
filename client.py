@@ -128,6 +128,14 @@ def cmd_switch(activeChannel: str):
     return
 #endregion
 
+def keepalive(sender_soc, server: SocketAddress, exit_event: threading.Event):
+    last_keepalive = time.perf_counter()
+    while (True):
+        if exit_event.is_set():
+            return
+        if (time.perf_counter() - last_keepalive >= 10):
+            send_datagram(sender_soc, server, build_keepalive_request())
+            last_keepalive = time.perf_counter()
 
 def main():
     if (len(sys.argv) != 4):
@@ -152,12 +160,18 @@ def main():
 
     exit_event = threading.Event()
     threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,)).start()
+    threading.Thread(target=keepalive, name="keepaliveThread",args=(client_soc,server,exit_event)).start()
 
     print(f"Client logged in.")
     login_user(client_soc, server, local_username)
 
+    last_keepalive = time.perf_counter()
+
     while (True):
-        time.sleep(0.5)
+
+        time.sleep(0.5) #helps seperate outputing '>'
+        #might be able to remove after using string Buffer modifications
+
         input_prompt = input(">")
         parsed_input = input_prompt.strip().split()
 

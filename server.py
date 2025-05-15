@@ -19,10 +19,14 @@ def create_server_socket(socket_address: SocketAddress):
 
 def serverListener(server_soc : socket.socket, request_queue: queue.Queue, server_start_time): #thread to handle all incoming messages and queue in queue
     while (True):
-        print(f"[{threading.current_thread().name}] Waiting...")
-        datagram, client_address = server_soc.recvfrom(1024)
-        print(f"[{threading.current_thread().name}] Recieved something...")
-        request_queue.put((datagram, client_address))
+        try:
+            #print(f"[{threading.current_thread().name}] Waiting...")
+            datagram, client_address = server_soc.recvfrom(1024)
+            #print(f"[{threading.current_thread().name}] Recieved something...")
+            request_queue.put((datagram, client_address))
+        except ConnectionResetError as cre:
+            print(f"{client_address} connection was reset: ignoring datagram")
+            continue
         #add datagam to request_queue
         #have to consider whether to 
             #tag User during listening or (might be more convenient)
@@ -30,13 +34,21 @@ def serverListener(server_soc : socket.socket, request_queue: queue.Queue, serve
     return        
 
 def clean_users(user_store:dict, server_soc: socket.socket, user_to_channels: dict, channel_to_users: dict):
-    for usernames in list(user_to_channels):
-        user: User = user_store[usernames]
-        if (time.perf_counter() - user.last_activity):
-            handle_logout(user_store, server_soc, user, user_to_channels, channel_to_users)
-            datagram = build_error_response("Timed out of server: Please reopen")
-            send_datagram(server_soc, user.user_address, datagram)
-            print(f"Logging out user {user.username}")
+    logout_list = []
+    
+    user: User
+
+    for user in user_store.values():
+        print(f"{time.perf_counter()}: clean log: {user.username} {user.last_activity}")
+        print(f"Checking user {user.username} — last activity: {user.last_activity}, now: {time.perf_counter()}")
+        if (time.perf_counter() - user.last_activity >= 20):
+            logout_list.append(user)
+
+    for user in logout_list:
+        handle_logout(user_store, server_soc, user, user_to_channels, channel_to_users)
+        datagram = build_error_response("Timed out of server: Please reopen")
+        send_datagram(server_soc, user.user_address, datagram)
+        print(f"{time.perf_counter()}: Logging out user {user.username}")
 
 def global_handler(user_store:dict, server_soc: socket.socket, request_queue: queue.Queue, user_to_channels: dict, channel_to_users: dict, server_start_time):
     """
@@ -44,7 +56,8 @@ def global_handler(user_store:dict, server_soc: socket.socket, request_queue: qu
     """
     last_clean = time.perf_counter()
     while (True):
-        if (time.perf_counter() - last_clean >= 120):
+        time.sleep(1)
+        if (time.perf_counter() - last_clean >= 20):
             clean_users(user_store, server_soc, user_to_channels, channel_to_users)
             last_clean = time.perf_counter()
         try:
@@ -60,8 +73,9 @@ def global_handler(user_store:dict, server_soc: socket.socket, request_queue: qu
             missed = True
             for user in user_store.values():
                 if (user.user_address == clientAddress):
-                    user_store[user.username]._replace(last_activity=time.perf_counter())
+                    user_store[user.username] = user_store[user.username]._replace(last_activity=time.perf_counter())
                     missed = False
+                    break
 
             if missed:
                 print("There is no User stored with clientAddress")
@@ -73,26 +87,19 @@ def global_handler(user_store:dict, server_soc: socket.socket, request_queue: qu
 
             match msg_type:
                 case 1:
-                    print("LOG: handle_logout()")
-                    handle_logout(user_store, server_soc, user, current_datagram, user_to_channels, channel_to_users)
+                    handle_logout(user_store, server_soc, user, user_to_channels, channel_to_users)
                 case 2:
-                    print("LOG: handle_join()")
                     handle_join(server_soc, user, current_datagram, user_to_channels, channel_to_users)
                 case 3:
-                    print("LOG: handle_leave()")
                     handle_leave(server_soc, user, current_datagram, user_to_channels, channel_to_users)
                 case 4:
-                    print("LOG: handle_say()")
                     handle_say(user_store, server_soc, user, current_datagram, channel_to_users)
                 case 5:
-                    print("LOG: handle_list()")
                     handle_list(server_soc, user, current_datagram, channel_to_users)
                 case 6:
-                    print("LOG: handle_logout()")
                     handle_who(server_soc, user, current_datagram, channel_to_users)
                 case 7:
-                    print("LOG: handle_keepalive()")
-                    handle_keepalive(server_soc, user, current_datagram)
+                    handle_keepalive(user_store, user)
                 case _:
                     print(f"Datagram with unknown message type ignored.")
         except queue.Empty:
@@ -132,7 +139,7 @@ def handle_logout(user_store:dict, server_soc: socket.socket, user: User, user_t
             channel_to_users[channel].remove(user.username)
             double_check = True
     if (not user_to_channels.pop(user.username) or (not user_store.pop(user.username))or (not double_check)):
-        print(f"Potential internal server problem")
+        print(f"Potential internal dict management problem")
     return
 
 def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes, user_to_channels: dict[User, List[str]], channel_to_users: dict[str, List[User]]):
@@ -221,7 +228,9 @@ def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, 
     send_datagram(server_soc, user.user_address, response_datagram)
     return
 
-def handle_keepalive(server_soc: socket.socket, user: User, recieved_datagram: bytes):
+def handle_keepalive(user_store: dict, user: User):
+    user_store[user.username] = user_store[user.username]._replace(last_activity=time.perf_counter())
+    print(f"{user_store[user.username].username} pinged to be kept alive.")
     return
 
 #endregion
