@@ -62,7 +62,7 @@ def global_handler(user_store:dict, server_soc: socket.socket, request_queue: qu
             last_clean = time.perf_counter()
         try:
             current_datagram, clientAddress = request_queue.get(timeout=1)
-            print(f"Processing {clientAddress} request...")
+            #print(f"Processing {clientAddress} request...")
 
             msg_type = get_message_type(current_datagram)
             if msg_type == 0:
