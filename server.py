@@ -55,7 +55,7 @@ def global_handler(server_soc: socket.socket, request_queue: queue.Queue, user_t
                     handle_logout(server_soc, user, current_datagram)
                 case 2:
                     print("LOG: handle_join()")
-                    handle_join(server_soc, user, current_datagram)
+                    handle_join(server_soc, user, current_datagram, user_to_channel, channel_to_user)
                 case 3:
                     print("LOG: handle_leave()")
                     handle_leave(server_soc, user, current_datagram)
@@ -119,10 +119,16 @@ def handle_logout(server_soc: socket.socket, user: User, recieved_datagram: byte
 def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes, user_to_channel: dict[User, List[str]], channel_to_user: dict[str, List[User]]):
     channel = parse_join_request(recieved_datagram)
 
+    ####!!!! HANDLE CASE WHERE CLIENT IS ALREADY IN CHANNEL
+    
     #add user to channel_to_user
     if channel not in list(channel_to_user): #if channel doesnt exit
         channel_to_user[channel] = [user]
     else: #if channel exists
+        if user in channel_to_user[channel]: #if user already in channel
+            datagram = build_error_response(f"User is already in channel.")
+            send_datagram(server_soc, user.user_address, datagram)
+            return    
         channel_to_user[channel].append(user)
 
     #add channel in user_to_channel

@@ -162,7 +162,9 @@ def main():
 
             case ["/join", channel]:
                 print(f"executing cmd_join({channel})")
-                cmd_join()
+                print(f"[CONSOLE] switching local activeChannel to {channel}")
+                active_channel = channel
+                cmd_join(client_soc, server, channel)
 
             case ["/leave", channel]:
                 print(f"executing cmd_leave({channel})")
