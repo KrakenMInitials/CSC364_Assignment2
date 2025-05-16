@@ -1,6 +1,7 @@
 import sys, time, threading
 from globals import *
 from protocols import *
+import os
 
 def create_client_socket():
     try:
@@ -215,6 +216,7 @@ def main():
                     continue
 
                 if active_channel[0] == channel:
+                    os.system('cls' if os.name == 'nt' else 'clear')
                     print(f"[CONSOLE] switching active_channel to previous: {previous_channel}")
                     active_channel[0] = previous_channel
                 if channel == "Common":
@@ -229,6 +231,7 @@ def main():
 
             case ["/switch", channel]:
                 if (channel in local_list):    
+                    os.system('cls' if os.name == 'nt' else 'clear')
                     print(f"[CONSOLE] switching active_channel to {channel}")
                     previous_channel = active_channel[0]
                     active_channel[0] = channel
