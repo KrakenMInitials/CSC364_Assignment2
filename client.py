@@ -194,6 +194,13 @@ def main():
                 cmd_exit(client_soc, server, exit_event)
 
             case ["/join", channel]:
+                if len(channel) == 0:
+                    print("[CONSOLE] Join Failed: channel name cannot be empty")
+                    continue
+                if len(channel.encode("utf-8")) > 32:
+                    print("[CONSOLE] Join Failed: channel name exceeds 32 bytes")
+                    continue
+
                 print(f"[CONSOLE] switching active_channel to '{channel}'")
                 previous_channel = active_channel[0]
                 active_channel[0] = channel
@@ -204,8 +211,9 @@ def main():
 
             case ["/leave", channel]:
                 if channel not in local_list:
-                    print(f"[CONSOLE] leave failed: channel is not in local_list")
+                    print(f"[CONSOLE] Leave Failed: channel is not in local_list")
                     continue
+                
                 if active_channel[0] == channel:
                     print(f"[CONSOLE] switching active_channel to previous: {previous_channel}")
                     active_channel[0] = previous_channel
