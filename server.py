@@ -41,7 +41,7 @@ def clean_users(user_store:dict, server_soc: socket.socket, user_to_channels: di
     for user in user_store.values():
         #print(f"{time.perf_counter()}: clean log: {user.username} {user.last_activity}")
         #print(f"Checking user {user.username} — last activity: {user.last_activity}, now: {time.perf_counter()}")
-        if (time.perf_counter() - user.last_activity >= 20):
+        if (time.perf_counter() - user.last_activity >= 120):
             logout_list.append(user)
 
     for user in logout_list:
@@ -57,7 +57,7 @@ def global_handler(user_store:dict, server_soc: socket.socket, request_queue: qu
     last_clean = time.perf_counter()
     while (True):
         time.sleep(1)
-        if (time.perf_counter() - last_clean >= 20):
+        if (time.perf_counter() - last_clean >= 120):
             clean_users(user_store, server_soc, user_to_channels, channel_to_users)
             last_clean = time.perf_counter()
         try:

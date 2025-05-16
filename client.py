@@ -138,7 +138,7 @@ def keepalive(sender_soc, server: SocketAddress, exit_event: threading.Event):
     while (True):
         if exit_event.is_set():
             return
-        if (time.perf_counter() - last_keepalive >= 10):
+        if (time.perf_counter() - last_keepalive >= 60):
             send_datagram(sender_soc, server, build_keepalive_request())
             last_keepalive = time.perf_counter()    
 
@@ -213,7 +213,7 @@ def main():
                 if channel not in local_list:
                     print(f"[CONSOLE] Leave Failed: channel is not in local_list")
                     continue
-                
+
                 if active_channel[0] == channel:
                     print(f"[CONSOLE] switching active_channel to previous: {previous_channel}")
                     active_channel[0] = previous_channel
