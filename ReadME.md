@@ -1,3 +1,5 @@
+You can run 'run.bat' to simulate, but otherwise use /server.py and /client.py in a regular client-server way.
+
 ```
 Existing channels:
    Common*
