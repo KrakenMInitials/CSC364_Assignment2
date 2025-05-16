@@ -39,8 +39,8 @@ def clean_users(user_store:dict, server_soc: socket.socket, user_to_channels: di
     user: User
 
     for user in user_store.values():
-        print(f"{time.perf_counter()}: clean log: {user.username} {user.last_activity}")
-        print(f"Checking user {user.username} — last activity: {user.last_activity}, now: {time.perf_counter()}")
+        #print(f"{time.perf_counter()}: clean log: {user.username} {user.last_activity}")
+        #print(f"Checking user {user.username} — last activity: {user.last_activity}, now: {time.perf_counter()}")
         if (time.perf_counter() - user.last_activity >= 20):
             logout_list.append(user)
 
@@ -198,7 +198,7 @@ def handle_say(user_store: dict, server_soc: socket.socket, user: User, recieved
         response_datagram = build_error_response("Active Channel doesn't exist.")
         send_datagram(server_soc, user.user_address, response_datagram)
     elif user.username not in list(channel_to_users[channel]):
-        response_datagram = build_error_response("User attempted to message a channel they are not a part of.")
+        response_datagram = build_error_response("User attempted to message channel they are not in. \'/join <ch>\'")
         send_datagram(server_soc, user.user_address, response_datagram)
     else:
         response_datagram = build_say_response(channel, user.username, msg)

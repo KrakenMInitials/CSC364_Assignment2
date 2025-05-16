@@ -1,64 +1,10 @@
 import sys, time, threading
 from globals import *
 from protocols import *
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 
-import os
-
-##BELOW CODE PULLED OFF CHATGPT, function definition was made by me, I didn't want to just install a package
-if os.name == 'nt':  # Windows 
-    import msvcrt
-
-    def ask_input(prompt: str, request_event: threading.Event) -> str:
-        print(prompt, end='', flush=True)
-        buf = ""
-        while True:
-            if request_event.is_set():
-                return buf
-
-            if msvcrt.kbhit():
-                ch = msvcrt.getch()
-                if ch in {b'\r', b'\n'}:
-                    print()
-                    return buf
-                elif ch == b'\x08':  # Backspace
-                    buf = buf[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-                else:
-                    char = ch.decode('utf-8', errors='ignore')
-                    buf += char
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
-else:  # Unix/Linux/macOS
-    import termios
-    import tty
-
-    def ask_input(prompt: str, request_event: threading.Event) -> str:
-        print(prompt, end='', flush=True)
-        buf = ""
-
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            while True:
-                if request_event.is_set():
-                    return buf
-
-                ch = sys.stdin.read(1)
-                if ch == '\n':
-                    print()
-                    return buf
-                elif ch == '\x7f':  # Backspace
-                    buf = buf[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-                else:
-                    buf += ch
-                    sys.stdout.write(ch)
-                    sys.stdout.flush()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+session = PromptSession()
 
 def create_client_socket():
     try:
@@ -70,9 +16,7 @@ def create_client_socket():
 
 
 def client_listener(client_soc: socket.socket, exit_event: threading.Event, 
-                    activeChannel: list[str], local_list: set, 
-                    ready_print: threading.Event, request_print: threading.Event,
-                    input_prompt: str):     #listenerThread
+                    activeChannel: list[str], local_list: set):     #listenerThread
     client_soc.settimeout(5)
     while (True):
         try:
@@ -85,46 +29,37 @@ def client_listener(client_soc: socket.socket, exit_event: threading.Event,
             #error_response
             msg_type = get_message_type(recieved_datagram)
             if ( msg_type == 0): #say 
-                request_print.set()
-                ready_print.wait()
-
-                request_print.clear()
-                ready_print.clear()
-                
-                print(f"\b" * len(input_prompt))
-
                 channel, user, text = parse_say_response(recieved_datagram)
-                print(f"[{channel}][{user}] {text}")
-                print(">" + input_prompt)
+                session.app.print_text(f"[{channel}][{user}] {text}")
 
             elif (msg_type == 1): #list 
                 channels_arr = parse_list_response(recieved_datagram)
-                print("Existing channels: ")
+                session.app.print_text("Existing channels: ")
                 local_list.clear()
                 local_list.update(channels_arr)
                 for x in channels_arr:
                     if x == activeChannel[0]:
-                        print("   " + str(x) + "*")
+                        session.app.print_text("   " + str(x) + "*")
                     else:
-                        print("   " + str(x))
+                        session.app.print_text("   " + str(x))
             
             elif (msg_type == 2): #who
                 users_arr, channel = parse_who_response(recieved_datagram)
-                print(f"Users on channel {channel}:")
+                session.app.print_text(f"Users on channel {channel}:")
                 for x in users_arr:
                     print("   " + str(x))
 
             elif ( msg_type == 3): #error
                 error_msg = parse_error_response(recieved_datagram)
-                print(f"[CONSOLE] Error message from server: \n   {error_msg}")
+                session.app.print_text(f"[CONSOLE] Error message from server: \n   {error_msg}")
         except socket.timeout:
             #no problems, just quick check for exit_event
             if exit_event.is_set():
-                print("listening thread closed.")
+                session.app.print_text("listening thread closed.")
                 return
             continue
         except Exception as e:
-            print(f"[CONSOLE] Exception in client listener thread: {e} \nBut continuing regular operations...")
+            session.app.print_text(f"[CONSOLE] Exception in client listener thread: {e} \nBut continuing regular operations...")
 
 
 #region Command functions
@@ -231,24 +166,20 @@ def main():
     active_channel = ["Common"]
     local_list = {"Common"}
 
-    exit_event = threading.Event()
-    request_print = threading.Event()
-    ready_print = threading.Event()
-    input_prompt: str = ""
 
-    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,local_list, ready_print, request_print, input_prompt)).start()
+    exit_event = threading.Event()
+
+    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,local_list)).start()
     threading.Thread(target=keepalive, name="keepaliveThread",args=(client_soc,server,exit_event)).start()
 
     print(f"Client logged in.")
     login_user(client_soc, server, local_username)
 
     while (True):
-        input_prompt = ""
         time.sleep(0.5) #helps seperate outputing '>'
         #might be able to remove after using string Buffer modifications
-        ready_print.clear()
-        input_prompt = ask_input(">", request_print)
-        ready_print.set()
+        with patch_stdout():
+            input_prompt = session.prompt("\n> ")
         parsed_input = input_prompt.strip().split()
 
         match parsed_input:
@@ -266,12 +197,9 @@ def main():
 
             case ["/leave", channel]:
                 if active_channel[0] == channel:
-                    print(f"[CONSOLE] defaulting local activeChannel to Common")
+                    print(f"[CONSOLE] defaulting local active_channel to Common")
                     active_channel[0] = "Common"
-                cmd_leave(client_soc, server, channel)
-                print(f"\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b"
-                      "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b")
-                
+                cmd_leave(client_soc, server, channel)        
 
             case ["/list"]:
                 cmd_list(client_soc, server)
@@ -281,7 +209,7 @@ def main():
 
             case ["/switch", channel]:
                 if (channel in local_list):    
-                    print(f"[CONSOLE] switching local activeChannel to {channel}")
+                    print(f"[CONSOLE] switching local active_channel to {channel}")
                     active_channel[0] = channel
                 else:
                     print(f"[CONSOLE] channel doesn't exist locally: try using /list to update.")
