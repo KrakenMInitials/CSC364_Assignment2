@@ -1,10 +1,6 @@
 import sys, time, threading
 from globals import *
 from protocols import *
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
-
-session = PromptSession()
 
 def create_client_socket():
     try:
@@ -30,36 +26,36 @@ def client_listener(client_soc: socket.socket, exit_event: threading.Event,
             msg_type = get_message_type(recieved_datagram)
             if ( msg_type == 0): #say 
                 channel, user, text = parse_say_response(recieved_datagram)
-                session.app.print_text(f"[{channel}][{user}] {text}")
+                print(f"[{channel}][{user}] {text}")
 
             elif (msg_type == 1): #list 
                 channels_arr = parse_list_response(recieved_datagram)
-                session.app.print_text("Existing channels: ")
+                print("Existing channels: ")
                 local_list.clear()
                 local_list.update(channels_arr)
                 for x in channels_arr:
                     if x == activeChannel[0]:
-                        session.app.print_text("   " + str(x) + "*")
+                        print("   " + str(x) + "*")
                     else:
-                        session.app.print_text("   " + str(x))
+                        print("   " + str(x))
             
             elif (msg_type == 2): #who
                 users_arr, channel = parse_who_response(recieved_datagram)
-                session.app.print_text(f"Users on channel {channel}:")
+                print(f"Users on channel {channel}:")
                 for x in users_arr:
                     print("   " + str(x))
 
             elif ( msg_type == 3): #error
                 error_msg = parse_error_response(recieved_datagram)
-                session.app.print_text(f"[CONSOLE] Error message from server: \n   {error_msg}")
+                print(f"[CONSOLE] Error message from server: \n   {error_msg}")
         except socket.timeout:
             #no problems, just quick check for exit_event
             if exit_event.is_set():
-                session.app.print_text("listening thread closed.")
+                print("listening thread closed.")
                 return
             continue
         except Exception as e:
-            session.app.print_text(f"[CONSOLE] Exception in client listener thread: {e} \nBut continuing regular operations...")
+            print(f"[CONSOLE] Exception in client listener thread: {e} \nBut continuing regular operations...")
 
 
 #region Command functions
@@ -166,7 +162,6 @@ def main():
     active_channel = ["Common"]
     local_list = {"Common"}
 
-
     exit_event = threading.Event()
 
     threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,local_list)).start()
@@ -176,10 +171,10 @@ def main():
     login_user(client_soc, server, local_username)
 
     while (True):
+        input_prompt = ""
         time.sleep(0.5) #helps seperate outputing '>'
         #might be able to remove after using string Buffer modifications
-        with patch_stdout():
-            input_prompt = session.prompt("\n> ")
+        input_prompt = input(">")
         parsed_input = input_prompt.strip().split()
 
         match parsed_input:
