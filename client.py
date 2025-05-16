@@ -12,7 +12,7 @@ def create_client_socket():
 
 
 def client_listener(client_soc: socket.socket, exit_event: threading.Event, 
-                    activeChannel: list[str], local_list: set):     #listenerThread
+                    activeChannel: list[str], local_list: set, in_common):     #listenerThread
     client_soc.settimeout(5)
     while (True):
         try:
@@ -31,13 +31,16 @@ def client_listener(client_soc: socket.socket, exit_event: threading.Event,
             elif (msg_type == 1): #list 
                 channels_arr = parse_list_response(recieved_datagram)
                 print("Existing channels: ")
-                local_list.clear()
-                local_list.update(channels_arr)
                 for x in channels_arr:
-                    if x == activeChannel[0]:
-                        print("   " + str(x) + "*")
+                    regular:str = ("   " + str(x))
+                    if x in local_list and x == activeChannel[0]:
+                        print(regular + "*" + " (active) ")
+                    elif x in local_list and x == "Common" and not in_common[0]:
+                        print(regular)
+                    elif x in local_list:
+                        print(regular + "*")
                     else:
-                        print("   " + str(x))
+                        print(regular)
             
             elif (msg_type == 2): #who
                 users_arr, channel = parse_who_response(recieved_datagram)
@@ -151,7 +154,11 @@ def main():
     print(f"Host: {server_host}")
     print(f"Port: {server_port}")
     print(f"Username: {local_username}")
-
+    
+    username_byte_count = len(local_username.encode("utf-8"))
+    if (username_byte_count > 32):
+        print(f"Invalid Username: more than 32 bytes.")
+        sys.exit(1)
 
     server = SocketAddress((server_host, int(server_port)))
     client_soc = create_client_socket()
@@ -161,10 +168,12 @@ def main():
     print(f"[CONSOLE] Client socket binded to {ip}:{port}")
     active_channel = ["Common"]
     local_list = {"Common"}
+    previous_channel: str = "Common"
+    in_common = [True]
 
     exit_event = threading.Event()
 
-    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,local_list)).start()
+    threading.Thread(target=client_listener, name="listenerThread", args=(client_soc,exit_event, active_channel,local_list, in_common)).start()
     threading.Thread(target=keepalive, name="keepaliveThread",args=(client_soc,server,exit_event)).start()
 
     print(f"Client logged in.")
@@ -185,15 +194,23 @@ def main():
                 cmd_exit(client_soc, server, exit_event)
 
             case ["/join", channel]:
-                print(f"[CONSOLE] switching local active_channel to '{channel}'")
+                print(f"[CONSOLE] switching active_channel to '{channel}'")
+                previous_channel = active_channel[0]
                 active_channel[0] = channel
                 cmd_join(client_soc, server, channel)
                 local_list.add(active_channel[0])
+                if active_channel[0] == "Common":
+                    in_common[0] = True
 
             case ["/leave", channel]:
+                if channel not in local_list:
+                    print(f"[CONSOLE] leave failed: channel is not in local_list")
+                    continue
                 if active_channel[0] == channel:
-                    print(f"[CONSOLE] defaulting local active_channel to Common")
-                    active_channel[0] = "Common"
+                    print(f"[CONSOLE] switching active_channel to previous: {previous_channel}")
+                    active_channel[0] = previous_channel
+                if channel == "Common":
+                    in_common[0] = False
                 cmd_leave(client_soc, server, channel)        
 
             case ["/list"]:
@@ -204,14 +221,22 @@ def main():
 
             case ["/switch", channel]:
                 if (channel in local_list):    
-                    print(f"[CONSOLE] switching local active_channel to {channel}")
+                    print(f"[CONSOLE] switching active_channel to {channel}")
+                    previous_channel = active_channel[0]
                     active_channel[0] = channel
+
+                    if active_channel[0] == "Common":
+                        in_common[0] = True
                 else:
-                    print(f"[CONSOLE] channel doesn't exist locally: try using /list to update.")
+                    print(f"[CONSOLE] client is not in channel: use /join.")
+
+            case ["/logout"]:
+                print(f"[CONSOLE] Unknown command: {parsed_input}\n Did you mean '/exit'?")
 
             case s if s[0][0] == '/':
                 print(f"[CONSOLE] Unknown command: {parsed_input}")
             
+
             case _:
                 byte_count = len(input_prompt.encode("utf-8"))
                 if (byte_count>64):

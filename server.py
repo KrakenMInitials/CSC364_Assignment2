@@ -134,12 +134,15 @@ def handle_login(user_store:dict, server_soc: socket.socket, clientAddress: Sock
 def handle_logout(user_store:dict, server_soc: socket.socket, user: User, user_to_channels: dict[User, List[str]], channel_to_users: dict[str, List[User]]):
     double_check = False
 
-    for channel in channel_to_users:
+    for channel in list(channel_to_users):
         if user.username in channel_to_users[channel]:
             channel_to_users[channel].remove(user.username)
             double_check = True
+        if (channel != "Common") and channel_to_users[channel] == []:
+            channel_to_users.pop(channel) 
     if (not user_to_channels.pop(user.username) or (not user_store.pop(user.username))or (not double_check)):
         print(f"Potential internal dict management problem")
+    
     return
 
 def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes, user_to_channels: dict[User, List[str]], channel_to_users: dict[str, List[User]]):
@@ -168,9 +171,13 @@ def handle_join(server_soc: socket.socket, user: User, recieved_datagram: bytes,
 def handle_leave(server_soc: socket.socket, user: User, recieved_datagram: bytes,  user_to_channels: dict[User, List[str]], channel_to_users: dict[str, List[User]]):
     channel = parse_leave_request(recieved_datagram)
 
+    if channel not in list(channel_to_users):
+        datagram = build_error_response("Channel does not exist server-side")
+        send_datagram(server_soc, user.user_address, datagram)
+
     #check if user is in channel, raise error if not
     if user.username not in channel_to_users[channel]:
-        datagram = build_error_response("User is not in the specified channel")
+        datagram = build_error_response("User not found in the specified channel")
         send_datagram(server_soc, user.user_address, datagram)
         return
 
@@ -195,16 +202,19 @@ def handle_say(user_store: dict, server_soc: socket.socket, user: User, recieved
     channel, msg = parse_say_request(recieved_datagram)
 
     if channel not in channel_to_users:
-        response_datagram = build_error_response("Active Channel doesn't exist.")
+        response_datagram = build_error_response("active_channel doesn't exist.")
         send_datagram(server_soc, user.user_address, response_datagram)
+        return
     elif user.username not in list(channel_to_users[channel]):
         response_datagram = build_error_response("User attempted to message channel they are not in. \'/join <ch>\'")
         send_datagram(server_soc, user.user_address, response_datagram)
+        return
     else:
         response_datagram = build_say_response(channel, user.username, msg)
         for usernames in channel_to_users[channel]:
             user = user_store[usernames]
             send_datagram(server_soc, user.user_address, response_datagram)
+        return
 
 def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_users: dict[str, List[User]]):
     #no need parsing parse_list_request() returns None and isnt required
@@ -219,6 +229,10 @@ def handle_list(server_soc: socket.socket, user: User, recieved_datagram: bytes,
 def handle_who(server_soc: socket.socket, user: User, recieved_datagram: bytes, channel_to_users: dict[str, List[User]]):
     channel =  parse_who_request(recieved_datagram)
 
+    if channel not in channel_to_users:
+        response_datagram = build_error_response("Queried channel doesn't exist.")
+        send_datagram(server_soc, user.user_address, response_datagram)
+        return
     users_list = list(channel_to_users[channel])
     if (len(users_list) == 0):
         response_datagram = build_error_response(f"There are no users active in the channel {channel}.")
